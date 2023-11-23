@@ -1,0 +1,150 @@
+
+#include <IRremoteESP8266.h>
+#include <IRrecv.h>
+#include <IRutils.h>
+#include "FirebaseESP8266.h"
+#include <ESP8266WiFi.h>
+
+//Firebase config
+#define FIREBASE_HOST "prototypexreal-default-rtdb.firebaseio.com/"
+#define FIREBASE_AUTH "FoUFEsd9oeh1iQfxswlxJwkCP5ybHEWKTp3i3SyP"
+
+//Wifi 
+#define WIFI_SSID "KKACT"
+#define WIFI_PASSWORD "kk25990418"
+
+//Pins:Nodemcu
+//light
+#define relay1 15
+#define relay2 13
+#define relay3 0
+#define relay4 12
+
+//fan -only 1 fan
+//-full speed
+#define fan1speed1 4
+#define fan1speed2 5
+//fan1speed3 - 5 and 4 high -> on 
+#define fan1speed4 16 
+//fan1speed0/off - all off
+
+//IR Sensor
+#define IRsensor 2
+IRrecv irrec(IRsensor);
+decode_results results;
+
+//Firebase
+FirebaseData firebaseData;//for setting data
+FirebaseData firebaseData2;//for streaming
+
+void setup()
+{
+  //irsensor
+  irrec.enableIRIn();
+  
+  //pin modes
+//  pinMode(relay1,OUTPUT);
+//  pinMode(relay2,OUTPUT); 
+//  pinMode(relay3,OUTPUT);
+//  pinMode(relay4,OUTPUT);
+//  pinMode(fan1speed1,OUTPUT);
+//  pinMode(fan1speed2,OUTPUT);
+//  pinMode(fan1speed4,OUTPUT);
+
+   pinMode(5,OUTPUT);
+  pinMode(IRsensor,INPUT);
+
+  //serial monitor config
+  Serial.begin(115200);
+
+  //Wifi config
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("Connecting to Wi-Fi");
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    Serial.print(".");
+    delay(300);
+  }
+  Serial.println();
+  Serial.print("Connected with IP: ");
+  Serial.println(WiFi.localIP());
+  Serial.println();
+
+  //Firebase config
+  Firebase.begin(FIREBASE_HOST, FIREBASE_AUTH);
+
+  //Default Firebase Value
+  Firebase.setInt(firebaseData,"/Devices/Nodemcu 1",0);//Automatically adds room
+  
+  Firebase.reconnectWiFi(true);//check if we internet is connected or not
+   if (!Firebase.beginStream(firebaseData2,"/Devices"))
+  {
+    Serial.println("------------------------------------");
+    Serial.println("Can't begin stream connection...");
+    Serial.println("REASON: " + firebaseData.errorReason());
+    Serial.println("------------------------------------");
+    Serial.println();
+  }
+
+}
+
+void firebaseStream()//Firebase streaming service
+{
+ if (!Firebase.readStream(firebaseData2))
+  {
+    Serial.println("------------------------------------");
+    Serial.println("Can't read stream data...");
+    Serial.println("REASON: " + firebaseData2.errorReason());
+    Serial.println("------------------------------------");
+    Serial.println();
+  }
+  if (firebaseData2.streamTimeout())
+  {
+    Serial.println("Stream timeout, resume streaming...");
+    Serial.println();
+  }
+  if (firebaseData2.streamAvailable())
+  {
+   if(firebaseData2.dataType() == "string")
+   {
+    if(firebaseData2.intData()==1)
+    digitalWrite(5,HIGH);
+    else
+    digitalWrite(5,LOW);
+    Serial.println(firebaseData2.stringData());
+   }
+    Serial.println("------------------------------------");
+    Serial.println();
+  }
+}
+
+//Code for IRremote
+void IRsensorControl()
+{
+  if (irrec.decode(&results)) {
+ const uint16_t ircode = results.value;
+ Serial.println(ircode);
+
+//Switch 1
+if(ircode==21225 )
+{
+ digitalWrite(5,HIGH); 
+ Firebase.setString(firebaseData,"/Devices/Nodemcu 1/Switch 1/status","on");
+
+}
+else if(ircode==4841)
+{
+  digitalWrite(5,LOW);
+  Firebase.setString(firebaseData,"/Devices/Nodemcu 1/Switch 1/status","off");
+}
+else
+ Serial.println("Wrong ircode");
+irrec.resume(); // Receive the next value 
+}
+}
+
+void loop()
+{
+ firebaseStream();
+ IRsensorControl();
+}
